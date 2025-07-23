@@ -1,6 +1,6 @@
-import React, { useContext, useState, useEffect, useCallback } from 'react';
+import React, { useContext, useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, Image
+  View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, Image, Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -19,7 +19,7 @@ export default function HistoryScreen() {
   useFocusEffect(
     useCallback(() => {
       let mounted = true;
-      AsyncStorage.getItem('history')
+      AsyncStorage.getItem('recognitionHistory')
         .then(raw => {
           if (mounted) {
             const arr = raw ? JSON.parse(raw) : [];
@@ -30,12 +30,41 @@ export default function HistoryScreen() {
     }, [])
   );
 
+  const removeItem = async (idToRemove) => {
+    const updated = history.filter(item => item.id !== idToRemove);
+    await AsyncStorage.setItem('recognitionHistory', JSON.stringify(updated));
+    setHistory(updated);
+  };
+
+  const confirmDelete = (item) => {
+    Alert.alert(
+      'Xóa mục này?',
+      'Bạn có chắc chắn muốn xóa mục lịch sử này không?',
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Xóa',
+          style: 'destructive',
+          onPress: () => removeItem(item.id),
+        },
+      ]
+    );
+  };
+
   const filtered = history.filter(item =>
     (!search ||
-      (item.common && item.common.toLowerCase().includes(search.toLowerCase())) ||
-      (item.scientific && item.scientific.toLowerCase().includes(search.toLowerCase()))
+      (item.info?.commonName && item.info.commonName.toLowerCase().includes(search.toLowerCase())) ||
+      (item.info?.scientificName && item.info.scientificName.toLowerCase().includes(search.toLowerCase()))
     )
   );
+
+  const formatDateTime = (timestamp) => {
+    const date = new Date(timestamp);
+    return date.toLocaleString('vi-VN', {
+      hour: '2-digit', minute: '2-digit',
+      day: '2-digit', month: '2-digit', year: 'numeric'
+    });
+  };
 
   const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background, paddingTop: 28 },
@@ -56,9 +85,6 @@ export default function HistoryScreen() {
     filterBtn: {
       width: 36, height: 36, backgroundColor: colors.input, borderRadius: 18,
       alignItems: 'center', justifyContent: 'center',
-    },
-    sectionLabel: {
-      fontWeight: 'bold', fontSize: 16, marginBottom: 4, marginLeft: 16, color: colors.text,
     },
     card: {
       flexDirection: 'row',
@@ -87,26 +113,27 @@ export default function HistoryScreen() {
     info: { flex: 1, justifyContent: 'center' },
     common: { fontWeight: 'bold', fontSize: 16, marginBottom: 2, color: colors.text },
     science: { fontSize: 14, color: colors.text },
+    dateTime: { fontSize: 12, color: colors.text, opacity: 0.6 },
     moreBtn: { marginLeft: 10, padding: 6 },
     emptyText: { textAlign: 'center', color: colors.text, fontSize: 16, marginTop: 36 }
   });
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>Lịch Sử</Text>
+      <Text style={styles.header}>Lịch Sử Nhận Diện</Text>
       <View style={styles.searchRow}>
         <TextInput
           style={styles.searchInput}
           value={search}
           onChangeText={setSearch}
-          placeholder="Tìm kiếm"
+          placeholder="Tìm theo tên"
           placeholderTextColor={theme === 'dark' ? '#aaa' : '#888'}
         />
         <TouchableOpacity style={styles.filterBtn}>
           <Ionicons name="filter-outline" size={22} color={colors.text} />
         </TouchableOpacity>
       </View>
-      <Text style={styles.sectionLabel}>Created Date</Text>
+
       {filtered.length === 0 ? (
         <Text style={styles.emptyText}>Chưa có lịch sử nhận diện</Text>
       ) : (
@@ -116,23 +143,28 @@ export default function HistoryScreen() {
           style={{ flex: 1 }}
           contentContainerStyle={{ paddingVertical: 8 }}
           renderItem={({ item }) => (
-            <View style={styles.card}>
+            <TouchableOpacity
+              style={styles.card}
+              onPress={() => navigation.navigate('Result', {
+                fromHistory: true,
+                image: item.image,
+                info: item.info,
+              })}
+            >
               {item.image ? (
                 <Image source={{ uri: item.image }} style={styles.thumb} />
               ) : (
                 <View style={styles.thumb} />
               )}
               <View style={styles.info}>
-                <Text style={styles.common}>{item.common || 'Chưa có tên'}</Text>
-                <Text style={styles.science}>{item.scientific || ''}</Text>
+                <Text style={styles.common}>{item.info?.commonName || 'Chưa có tên'}</Text>
+                <Text style={styles.science}>{item.info?.scientificName || ''}</Text>
+                <Text style={styles.dateTime}>{formatDateTime(item.timestamp)}</Text>
               </View>
-              <TouchableOpacity
-                style={styles.moreBtn}
-                onPress={() => navigation.navigate('SampleDetails', { ...item })}
-              >
+              <TouchableOpacity style={styles.moreBtn} onPress={() => confirmDelete(item)}>
                 <Ionicons name="ellipsis-horizontal" size={22} color={colors.text} />
               </TouchableOpacity>
-            </View>
+            </TouchableOpacity>
           )}
           showsVerticalScrollIndicator={false}
         />

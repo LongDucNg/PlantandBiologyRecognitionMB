@@ -1,14 +1,13 @@
-import React, { useContext, useMemo } from 'react';
+import React, { useContext, useMemo, useEffect } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  Image,
-  TouchableOpacity,
-  ScrollView,
+  View, Text, StyleSheet, Image,
+  TouchableOpacity, ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import uuid from 'react-native-uuid';
+
 import { ThemeContext } from '../Screens/ThemeContext';
 import { lightTheme, darkTheme } from '../Screens/theme';
 
@@ -29,33 +28,20 @@ function parseRecogInfo(recogResult) {
   for (const part of parts) {
     const data = part?.functionResponse?.response?.data;
     if (data) {
-      if (data.name || data.scientificName) {
-        return {
-          commonName: data.name || '',
-          scientificName: data.scientificName || '',
-          type: data.type || '',
-          classification: data.classification || '',
-          biology: data.biology || '',
-          summary: data.summary || '',
-          description: data.description || '',
-          textbook: data.textbook || '',
-        };
-      }
-      if (Array.isArray(data.items) && data.items.length) {
-        const item = data.items[0];
-        return {
-          commonName: item?.name || '',
-          scientificName: item?.scientificName || '',
-          type: item?.type || '',
-          classification: item?.classification || '',
-          biology: item?.biology || '',
-          summary: item?.summary || '',
-          description: item?.description || '',
-          textbook: item?.textbook || '',
-        };
-      }
+      const item = Array.isArray(data.items) && data.items.length ? data.items[0] : data;
+      return {
+        commonName: item?.name || '',
+        scientificName: item?.scientificName || '',
+        type: item?.type || '',
+        classification: item?.classification || '',
+        biology: item?.biology || '',
+        summary: item?.summary || '',
+        description: item?.description || '',
+        textbook: item?.textbook || '',
+      };
     }
   }
+
   const textPart = parts.find(p => typeof p.text === 'string');
   if (!textPart) return { summary: 'Không có dữ liệu phù hợp' };
   let rawText = textPart.text.trim();
@@ -76,23 +62,14 @@ function parseRecogInfo(recogResult) {
       };
     } catch { }
   }
+
   const extract = (regs, txt = rawText) => regs.map(r => txt.match(r)).find(m => m?.[1])?.[1]?.trim() || '';
   return {
-    commonName: extract([
-      /Tên\s*phổ\s*thông\s*[:\-]\s*([^\n]+)/i,
-      /commonly known as (?:the )?\*\*([^\*]+)\*\*/,
-    ]),
-    scientificName: extract([
-      /Tên\s*khoa\s*học\s*[:\-]\s*([^\n]+)/i,
-      /scientific name is \*{1,3}([^\*]+?)\*{1,3}/i,
-    ]),
-    type: extract([/Loại\s*(?:mẫu\s*vật)?\s*[:\-]\s*([^\n]+)/i]),
-    classification: extract([
-      /Phân loại sinh học\s*[:\-]\s*([^\n]+)/i
-    ]),
-    biology: extract([
-      /Đặc điểm sinh học\s*[:\-]\s*([\s\S]*?)(?:\n\S|$)/i
-    ]),
+    commonName: extract([/Tên\s*phổ\s*thông\s*[:\-]\s*([^\n]+)/i]),
+    scientificName: extract([/Tên\s*khoa\s*học\s*[:\-]\s*([^\n]+)/i]),
+    type: extract([/Loại\s*[:\-]\s*([^\n]+)/i]),
+    classification: extract([/Phân loại\sinh học\s*[:\-]\s*([^\n]+)/i]),
+    biology: extract([/Đặc điểm sinh học\s*[:\-]\s*([\s\S]*?)(?:\n\S|$)/i]),
     summary: extract([/Tóm tắt sơ bộ\s*[:\-]\s*([^\n]+)/i]) || rawText,
     description: extract([/Mô tả\s*[:\-]\s*([\s\S]*)/i]),
     textbook: extract([/SGK\s*THPT\s*[:\-]\s*([^\n]+)/i]),
@@ -104,17 +81,45 @@ const renderValue = v => v && v.trim() ? v : 'Chưa có dữ liệu';
 export default function ResultScreen() {
   const navigation = useNavigation();
   const { params = {} } = useRoute();
-  const { image, recogResult } = params;
-
   const { theme } = useContext(ThemeContext);
   const colors = theme === 'dark' ? darkTheme : lightTheme;
 
+  const isFromHistory = params?.fromHistory === true;
+  const image = params?.image;
+  const recogResult = params?.recogResult;
   const info = useMemo(() => {
-    try { return parseRecogInfo(recogResult) || {}; }
-    catch { return { summary: 'Không có dữ liệu phù hợp' }; }
-  }, [recogResult]);
+    try {
+      return isFromHistory ? params?.info || {} : parseRecogInfo(recogResult) || {};
+    } catch {
+      return { summary: 'Không có dữ liệu phù hợp' };
+    }
+  }, [recogResult, isFromHistory]);
 
-  // Dùng lại renderItem gọn gàng, hiện phân cách nếu có trường trước đó (optional)
+  useEffect(() => {
+    if (isFromHistory || !info?.scientificName?.trim()) return;
+
+    const saveHistory = async () => {
+      try {
+        const raw = await AsyncStorage.getItem('recognitionHistory');
+        const arr = raw ? JSON.parse(raw) : [];
+
+        const newItem = {
+          id: uuid.v4(),
+          timestamp: Date.now(),
+          image,
+          info,
+        };
+
+        const updated = [newItem, ...arr];
+        await AsyncStorage.setItem('recognitionHistory', JSON.stringify(updated));
+      } catch (err) {
+        console.error('Lỗi lưu lịch sử:', err);
+      }
+    };
+
+    saveHistory();
+  }, [image, info, isFromHistory]);
+
   const renderItem = (label, value, isLink = false) =>
     value && value.trim() ? (
       <>
@@ -138,7 +143,6 @@ export default function ResultScreen() {
         <Text style={[styles.headerTitle, { color: colors.text }]}>Chi tiết</Text>
       </View>
       <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
-        {/* Ảnh */}
         <View style={[styles.block, { backgroundColor: colors.card }]}>
           {image ? (
             <Image source={{ uri: image }} style={styles.resultImg} resizeMode="cover" />
@@ -148,17 +152,10 @@ export default function ResultScreen() {
             </View>
           )}
         </View>
-        {/* Info */}
         <View style={[styles.blockInfo, { backgroundColor: colors.card }]}>
-          <Text style={[styles.label, { color: colors.text }]}>Tên phổ thông:</Text>
-          <Text style={[styles.value, { color: colors.text }]}>{renderValue(info.commonName)}</Text>
-
-          <Text style={[styles.label, { color: colors.text }]}>Tên khoa học:</Text>
-          <Text style={[styles.value, { color: colors.text }]}>{renderValue(info.scientificName)}</Text>
-
-          <Text style={[styles.label, { color: colors.text }]}>Loại:</Text>
-          <Text style={[styles.value, { color: colors.text }]}>{renderValue(info.type)}</Text>
-
+          {renderItem('Tên phổ thông:', info.commonName)}
+          {renderItem('Tên khoa học:', info.scientificName)}
+          {renderItem('Loại:', info.type)}
           {renderItem('Phân loại sinh học:', info.classification)}
           {renderItem('Tóm tắt sơ bộ:', info.summary)}
           {renderItem('Mô tả:', info.description)}

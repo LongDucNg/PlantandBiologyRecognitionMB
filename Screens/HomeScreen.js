@@ -52,12 +52,20 @@ export default function HomeScreen() {
     }
   }, [isFocused, cameraReady]);
 
+  // Chỉ bật tắt flash nếu camera là 'back'
   const toggleFlash = () => {
-    setFlashMode(prev => (prev === 'off' ? 'torch' : 'off'));
+    if (cameraType === 'back') {
+      setFlashMode(prev => (prev === 'off' ? 'torch' : 'off'));
+    }
   };
 
+  // Xoay camera và tắt flash nếu chuyển sang trước
   const switchCamera = () => {
-    setCameraType(prev => (prev === 'back' ? 'front' : 'back'));
+    setCameraType(prev => {
+      const nextType = prev === 'back' ? 'front' : 'back';
+      if (nextType === 'front') setFlashMode('off');
+      return nextType;
+    });
   };
 
   const openGallery = async () => {
@@ -120,10 +128,20 @@ export default function HomeScreen() {
             onMountError={(e) => console.warn('Camera error:', e)}
           />
 
-          <TouchableOpacity style={styles.flashButton} onPress={toggleFlash}>
-            <Ionicons name={flashMode === 'off' ? 'flash-off' : 'flash'} size={28} color="#fff" />
+          <TouchableOpacity
+            style={styles.flashButton}
+            onPress={toggleFlash}
+            disabled={cameraType !== 'back'}
+            activeOpacity={cameraType !== 'back' ? 1 : 0.6}
+          >
+            <Ionicons
+              name={flashMode === 'off' ? 'flash-off' : 'flash'}
+              size={28}
+              color={cameraType === 'back' ? '#fff' : '#888'}
+            />
           </TouchableOpacity>
 
+          {/* Nút xoay cam */}
           <TouchableOpacity style={styles.switchButton} onPress={switchCamera}>
             <Ionicons name="camera-reverse" size={28} color="#fff" />
           </TouchableOpacity>

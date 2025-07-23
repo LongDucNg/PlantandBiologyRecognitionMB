@@ -125,8 +125,8 @@ export default function RecognitionScreen() {
       {/* Indicator loading */}
       {loading && (
         <View style={styles.loadingBox}>
-          <ActivityIndicator size="large" color={colors.text} />
-          <Text style={{ color: colors.text, marginTop: 10 }}>
+          <ActivityIndicator size="large" color={colors.background} />
+          <Text style={{ color: colors.background, marginTop: 10 }}>
             Đang nhận diện...
           </Text>
         </View>
