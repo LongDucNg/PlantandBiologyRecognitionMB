@@ -4,26 +4,46 @@
     "slug": "BioRecognitionApp",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/leaf_icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "scheme": "biorecognitionapp",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/leaf_icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.long.biorecognition",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Ứng dụng cần truy cập camera để chụp ảnh nhận diện.",
+        "NSPhotoLibraryUsageDescription": "Ứng dụng cần truy cập thư viện ảnh để chọn ảnh nhận diện."
+      }
     },
     "android": {
+      "package": "com.long.biorecognition",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/leaf_icon.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/leaf_icon.png"
+    },
+    "plugins": [
+      "expo-web-browser",
+      "expo-secure-store"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "20bac34a-56b7-48ed-b8c8-2d50b199ad96"
+      },
+      "expoClientId": "963401869997-6h24u4hsfp5tcru264trsqq8prs3mh19.apps.googleusercontent.com",
+      "webClientId": "963401869997-6h24u4hsfp5tcru264trsqq8prs3mh19.apps.googleusercontent.com",
+      "androidClientId": "963401869997-6g6sv6meh8at1kt93o8joeh10358u874.apps.googleusercontent.com",
+      "iosClientId": "963401869997-6g6sv6meh8at1kt93o8joeh10358u874.apps.googleusercontent.com"
     }
   }
 }
