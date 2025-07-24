@@ -17,9 +17,7 @@ export async function registerUser({ name, email, password, avatarUri }) {
   }
 
   try {
-    const res = await axios.post(url, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    });
+    const res = await axios.post(url, formData); 
     return res.data;
   } catch (err) {
     throw err.response?.data || err;

@@ -1,4 +1,4 @@
-import React, { useContext, useMemo, useEffect } from 'react';
+import React, { useContext, useMemo, useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, Image,
   TouchableOpacity, ScrollView,
@@ -11,13 +11,35 @@ import uuid from 'react-native-uuid';
 import { ThemeContext } from '../Screens/ThemeContext';
 import { lightTheme, darkTheme } from '../Screens/theme';
 
-const safeParseJSON = (raw) => {
+// Tách block JSON cuối cùng từ chuỗi SSE
+const takeLastJSONFromSSE = (raw) => {
   if (typeof raw !== 'string') return raw;
-  let str = raw.trim();
-  if (str.startsWith('data:')) str = str.replace(/^data:\s*/, '');
-  try { return JSON.parse(str); } catch { return raw; }
+  const pieces = raw.split(/\n?data:\s*/).filter(Boolean);
+  let lastObj = null;
+  for (const p of pieces) {
+    try {
+      const obj = JSON.parse(p.trim());
+      lastObj = obj;
+    } catch {}
+  }
+  return lastObj ?? raw;
 };
 
+// Xóa fence ```json ```
+const stripFence = (s = '') =>
+  s.replace(/^```[\w-]*\n?/, '').replace(/```$/, '');
+
+// Hàm parse JSON an toàn
+const safeParseJSON = (raw) => {
+  if (typeof raw !== 'string') return raw;
+  const last = takeLastJSONFromSSE(raw);
+  if (typeof last === 'string') {
+    try { return JSON.parse(last.trim()); } catch { return raw; }
+  }
+  return last;
+};
+
+// Parse thông tin nhận diện
 function parseRecogInfo(recogResult) {
   const parsed = safeParseJSON(recogResult);
   if (typeof parsed !== 'object' || !parsed) return { summary: 'Không có dữ liệu phù hợp' };
@@ -25,6 +47,27 @@ function parseRecogInfo(recogResult) {
   const parts = parsed?.content?.parts;
   if (!Array.isArray(parts)) return { summary: 'Không có dữ liệu phù hợp' };
 
+  // 1. parse JSON trong part.text
+  for (const part of parts) {
+    if (typeof part.text === 'string') {
+      const rawText = stripFence(part.text.trim());
+      try {
+        const d = JSON.parse(rawText);
+        return {
+          commonName: d.name || '',
+          scientificName: d.scientificName || '',
+          type: d.type || '',
+          classification: d.classification || '',
+          biology: d.biology || '',
+          summary: d.summary || '',
+          description: d.description || '',
+          textbook: d.textbook || '',
+        };
+      } catch {}
+    }
+  }
+
+  // 2. functionResponse
   for (const part of parts) {
     const data = part?.functionResponse?.response?.data;
     if (data) {
@@ -42,38 +85,43 @@ function parseRecogInfo(recogResult) {
     }
   }
 
+  // 3. inline JSON
   const textPart = parts.find(p => typeof p.text === 'string');
-  if (!textPart) return { summary: 'Không có dữ liệu phù hợp' };
-  let rawText = textPart.text.trim();
+  if (textPart) {
+    let rawText = textPart.text.trim();
+    const inlineJson = rawText.match(/\{[\s\S]*?\}/);
+    if (inlineJson) {
+      try {
+        const d = JSON.parse(inlineJson[0]);
+        return {
+          commonName: d.name || '',
+          scientificName: d.scientificName || '',
+          type: d.type || '',
+          classification: d.classification || '',
+          biology: d.biology || '',
+          summary: d.summary || '',
+          description: d.description || '',
+          textbook: d.textbook || '',
+        };
+      } catch {}
+    }
 
-  const inlineJson = rawText.match(/\{[\s\S]*?\}/);
-  if (inlineJson) {
-    try {
-      const d = JSON.parse(inlineJson[0]);
-      return {
-        commonName: d.name || '',
-        scientificName: d.scientificName || '',
-        type: d.type || '',
-        classification: d.classification || '',
-        biology: d.biology || '',
-        summary: d.summary || '',
-        description: d.description || '',
-        textbook: d.textbook || '',
-      };
-    } catch { }
+    // 4. fallback extract từ chuỗi
+    const extract = (regs, txt = rawText) =>
+      regs.map(r => txt.match(r)).find(m => m?.[1])?.[1]?.trim() || '';
+    return {
+      commonName: extract([/Tên\s*phổ\s*thông\s*[:\-]\s*([^\n]+)/i]),
+      scientificName: extract([/Tên\s*khoa\s*học\s*[:\-]\s*([^\n]+)/i]),
+      type: extract([/Loại\s*[:\-]\s*([^\n]+)/i]),
+      classification: extract([/Phân loại\sinh học\s*[:\-]\s*([^\n]+)/i]),
+      biology: extract([/Đặc điểm sinh học\s*[:\-]\s*([\s\S]*?)(?:\n\S|$)/i]),
+      summary: extract([/Tóm tắt sơ bộ\s*[:\-]\s*([^\n]+)/i]) || rawText,
+      description: extract([/Mô tả\s*[:\-]\s*([\s\S]*)/i]),
+      textbook: extract([/SGK\s*THPT\s*[:\-]\s*([^\n]+)/i]),
+    };
   }
 
-  const extract = (regs, txt = rawText) => regs.map(r => txt.match(r)).find(m => m?.[1])?.[1]?.trim() || '';
-  return {
-    commonName: extract([/Tên\s*phổ\s*thông\s*[:\-]\s*([^\n]+)/i]),
-    scientificName: extract([/Tên\s*khoa\s*học\s*[:\-]\s*([^\n]+)/i]),
-    type: extract([/Loại\s*[:\-]\s*([^\n]+)/i]),
-    classification: extract([/Phân loại\sinh học\s*[:\-]\s*([^\n]+)/i]),
-    biology: extract([/Đặc điểm sinh học\s*[:\-]\s*([\s\S]*?)(?:\n\S|$)/i]),
-    summary: extract([/Tóm tắt sơ bộ\s*[:\-]\s*([^\n]+)/i]) || rawText,
-    description: extract([/Mô tả\s*[:\-]\s*([\s\S]*)/i]),
-    textbook: extract([/SGK\s*THPT\s*[:\-]\s*([^\n]+)/i]),
-  };
+  return { summary: 'Không có dữ liệu phù hợp' };
 }
 
 const renderValue = v => v && v.trim() ? v : 'Chưa có dữ liệu';
@@ -87,51 +135,60 @@ export default function ResultScreen() {
   const isFromHistory = params?.fromHistory === true;
   const image = params?.image;
   const recogResult = params?.recogResult;
+
+  const [showRaw, setShowRaw] = useState(false);
+
   const info = useMemo(() => {
     try {
-      return isFromHistory ? params?.info || {} : parseRecogInfo(recogResult) || {};
-    } catch {
+      const parsed = isFromHistory ? params?.info || {} : parseRecogInfo(recogResult) || {};
+      console.log('🟡 RAW recogResult:', recogResult);
+      console.log('🟢 Parsed Info:', parsed);
+      return parsed;
+    } catch (err) {
+      console.error('🔴 Lỗi khi phân tích recogResult:', err);
       return { summary: 'Không có dữ liệu phù hợp' };
     }
   }, [recogResult, isFromHistory]);
 
   useEffect(() => {
     if (isFromHistory || !info?.scientificName?.trim()) return;
-
     const saveHistory = async () => {
       try {
         const raw = await AsyncStorage.getItem('recognitionHistory');
         const arr = raw ? JSON.parse(raw) : [];
-
+        const exist = arr.find(
+          item => item.info?.scientificName === info.scientificName && item.image === image
+        );
+        if (exist) return;
         const newItem = {
           id: uuid.v4(),
           timestamp: Date.now(),
           image,
           info,
         };
-
-        const updated = [newItem, ...arr];
+        const updated = [newItem, ...arr].slice(0, 100);
         await AsyncStorage.setItem('recognitionHistory', JSON.stringify(updated));
       } catch (err) {
         console.error('Lỗi lưu lịch sử:', err);
       }
     };
-
     saveHistory();
   }, [image, info, isFromHistory]);
 
-  const renderItem = (label, value, isLink = false) =>
-    value && value.trim() ? (
+  const renderItem = (label, value, isLink = false) => {
+    if (!value?.trim()) return null;
+    return (
       <>
         <Text style={[styles.label, { color: colors.text }]}>{label}</Text>
         <Text style={[
           isLink ? styles.textbookLink : styles.value,
-          isLink ? null : { color: colors.text }
+          !isLink && { color: colors.text }
         ]}>
           {value}
         </Text>
       </>
-    ) : null;
+    );
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -142,6 +199,7 @@ export default function ResultScreen() {
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.text }]}>Chi tiết</Text>
       </View>
+
       <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
         <View style={[styles.block, { backgroundColor: colors.card }]}>
           {image ? (
@@ -152,6 +210,7 @@ export default function ResultScreen() {
             </View>
           )}
         </View>
+
         <View style={[styles.blockInfo, { backgroundColor: colors.card }]}>
           {renderItem('Tên phổ thông:', info.commonName)}
           {renderItem('Tên khoa học:', info.scientificName)}
@@ -162,6 +221,23 @@ export default function ResultScreen() {
           {renderItem('Đặc điểm sinh học:', info.biology)}
           {renderItem('SGK THPT:', info.textbook, true)}
         </View>
+
+        {__DEV__ && recogResult && showRaw && (
+          <ScrollView
+            style={{
+              margin: 16,
+              maxHeight: 250,
+              backgroundColor: '#eee',
+              padding: 10,
+              borderRadius: 10,
+            }}
+            horizontal
+          >
+            <Text style={{ fontSize: 12 }}>
+              {JSON.stringify(safeParseJSON(recogResult), null, 2)}
+            </Text>
+          </ScrollView>
+        )}
       </ScrollView>
     </View>
   );

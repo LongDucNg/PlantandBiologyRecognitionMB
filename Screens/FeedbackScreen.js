@@ -62,7 +62,12 @@ export default function FeedbackScreen({ navigation }) {
         setNoiDung('');
         navigation.goBack();
       } else {
-        Alert.alert('Lỗi', res.data?.message || 'Không gửi được phản hồi, vui lòng thử lại sau.');
+        Alert.alert(
+          'Thành công',
+          res.data?.message || 'Phản hồi của bạn đã được gửi.',
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+        setNoiDung('');
       }
     } catch (err) {
       let msg = 'Lỗi không xác định. Vui lòng thử lại.';

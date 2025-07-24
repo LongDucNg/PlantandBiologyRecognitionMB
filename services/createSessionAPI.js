@@ -11,7 +11,7 @@ export async function createSession(userId, sessionId) {
     url,
     {
       state: {
-        prefered_language: 'Vietnamese',
+        prefered_language: 'English',
         visit_count: 1
       }
     },
